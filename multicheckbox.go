@@ -8,11 +8,15 @@ import (
 // unchecked.
 //
 // See https://github.com/rivo/tview/wiki/Checkbox for an example.
-type Checkbox struct {
+type MultiCheckbox struct {
 	*Box
 
 	// Whether or not this box is checked.
-	checked bool
+	checked uint32
+
+	bits uint
+
+	focusedbit uint
 
 	// The text to be displayed before the input area.
 	label string
@@ -32,7 +36,7 @@ type Checkbox struct {
 
 	// An optional function which is called when the user changes the checked
 	// state of this checkbox.
-	changed func(checked bool)
+	changed func(checked uint32)
 
 	// An optional function which is called when the user indicated that they
 	// are done entering text. The key which was pressed is provided (tab,
@@ -45,8 +49,8 @@ type Checkbox struct {
 }
 
 // NewCheckbox returns a new input field.
-func NewCheckbox() *Checkbox {
-	return &Checkbox{
+func NewMultiCheckbox() *MultiCheckbox {
+	return &MultiCheckbox{
 		Box:                  NewBox(),
 		labelColor:           Styles.SecondaryTextColor,
 		fieldBackgroundColor: Styles.ContrastBackgroundColor,
@@ -55,54 +59,54 @@ func NewCheckbox() *Checkbox {
 }
 
 // SetChecked sets the state of the checkbox.
-func (c *Checkbox) SetChecked(checked bool) *Checkbox {
+func (c *MultiCheckbox) SetChecked(checked uint32) *MultiCheckbox {
 	c.checked = checked
 	return c
 }
 
 // IsChecked returns whether or not the box is checked.
-func (c *Checkbox) IsChecked() bool {
+func (c *MultiCheckbox) IsChecked() uint32 {
 	return c.checked
 }
 
 // SetLabel sets the text to be displayed before the input area.
-func (c *Checkbox) SetLabel(label string) *Checkbox {
+func (c *MultiCheckbox) SetLabel(label string) *MultiCheckbox {
 	c.label = label
 	return c
 }
 
 // GetLabel returns the text to be displayed before the input area.
-func (c *Checkbox) GetLabel() string {
+func (c *MultiCheckbox) GetLabel() string {
 	return c.label
 }
 
 // SetLabelWidth sets the screen width of the label. A value of 0 will cause the
 // primitive to use the width of the label string.
-func (c *Checkbox) SetLabelWidth(width int) *Checkbox {
+func (c *MultiCheckbox) SetLabelWidth(width int) *MultiCheckbox {
 	c.labelWidth = width
 	return c
 }
 
 // SetLabelColor sets the color of the label.
-func (c *Checkbox) SetLabelColor(color tcell.Color) *Checkbox {
+func (c *MultiCheckbox) SetLabelColor(color tcell.Color) *MultiCheckbox {
 	c.labelColor = color
 	return c
 }
 
 // SetFieldBackgroundColor sets the background color of the input area.
-func (c *Checkbox) SetFieldBackgroundColor(color tcell.Color) *Checkbox {
+func (c *MultiCheckbox) SetFieldBackgroundColor(color tcell.Color) *MultiCheckbox {
 	c.fieldBackgroundColor = color
 	return c
 }
 
 // SetFieldTextColor sets the text color of the input area.
-func (c *Checkbox) SetFieldTextColor(color tcell.Color) *Checkbox {
+func (c *MultiCheckbox) SetFieldTextColor(color tcell.Color) *MultiCheckbox {
 	c.fieldTextColor = color
 	return c
 }
 
 // SetFormAttributes sets attributes shared by all form items.
-func (c *Checkbox) SetFormAttributes(labelWidth int, labelColor, bgColor, fieldTextColor, fieldBgColor tcell.Color) FormItem {
+func (c *MultiCheckbox) SetFormAttributes(labelWidth int, labelColor, bgColor, fieldTextColor, fieldBgColor tcell.Color) FormItem {
 	c.labelWidth = labelWidth
 	c.labelColor = labelColor
 	c.backgroundColor = bgColor
@@ -112,14 +116,19 @@ func (c *Checkbox) SetFormAttributes(labelWidth int, labelColor, bgColor, fieldT
 }
 
 // GetFieldWidth returns this primitive's field width.
-func (c *Checkbox) GetFieldWidth() int {
-	return 1
+func (c *MultiCheckbox) GetFieldWidth() int {
+	return int(c.bits)
+}
+
+func (c *MultiCheckbox) SetBits(bits int) *MultiCheckbox {
+	c.bits = uint(bits)
+	return c
 }
 
 // SetChangedFunc sets a handler which is called when the checked state of this
 // checkbox was changed by the user. The handler function receives the new
 // state.
-func (c *Checkbox) SetChangedFunc(handler func(checked bool)) *Checkbox {
+func (c *MultiCheckbox) SetChangedFunc(handler func(checked uint32)) *MultiCheckbox {
 	c.changed = handler
 	return c
 }
@@ -131,19 +140,19 @@ func (c *Checkbox) SetChangedFunc(handler func(checked bool)) *Checkbox {
 //   - KeyEscape: Abort text input.
 //   - KeyTab: Move to the next field.
 //   - KeyBacktab: Move to the previous field.
-func (c *Checkbox) SetDoneFunc(handler func(key tcell.Key)) *Checkbox {
+func (c *MultiCheckbox) SetDoneFunc(handler func(key tcell.Key)) *MultiCheckbox {
 	c.done = handler
 	return c
 }
 
 // SetFinishedFunc sets a callback invoked when the user leaves this form item.
-func (c *Checkbox) SetFinishedFunc(handler func(key tcell.Key)) FormItem {
+func (c *MultiCheckbox) SetFinishedFunc(handler func(key tcell.Key)) FormItem {
 	c.finished = handler
 	return c
 }
 
 // Draw draws this primitive onto the screen.
-func (c *Checkbox) Draw(screen tcell.Screen) {
+func (c *MultiCheckbox) Draw(screen tcell.Screen) {
 	c.Box.Draw(screen)
 
 	// Prepare
@@ -166,20 +175,24 @@ func (c *Checkbox) Draw(screen tcell.Screen) {
 		x += drawnWidth
 	}
 
-	// Draw checkbox.
-	fieldStyle := tcell.StyleDefault.Background(c.fieldBackgroundColor).Foreground(c.fieldTextColor)
-	if c.focus.HasFocus() {
-		fieldStyle = fieldStyle.Background(c.fieldTextColor).Foreground(c.fieldBackgroundColor)
+	// Draw checkboxs
+	var i uint
+
+	for i = 0; i < c.bits; i++ {
+		fieldStyle := tcell.StyleDefault.Background(c.fieldBackgroundColor).Foreground(c.fieldTextColor)
+		if c.focus.HasFocus() && c.focusedbit == i {
+			fieldStyle = fieldStyle.Background(c.fieldTextColor).Foreground(c.fieldBackgroundColor)
+		}
+		checkedRune := 'X'
+		if (c.checked & (0x1 << i)) == 0 {
+			checkedRune = ' '
+		}
+		screen.SetContent(x+int(i), y, checkedRune, nil, fieldStyle)
 	}
-	checkedRune := 'X'
-	if !c.checked {
-		checkedRune = ' '
-	}
-	screen.SetContent(x, y, checkedRune, nil, fieldStyle)
 }
 
 // InputHandler returns the handler for this primitive.
-func (c *Checkbox) InputHandler() func(event *tcell.EventKey, setFocus func(p Primitive)) {
+func (c *MultiCheckbox) InputHandler() func(event *tcell.EventKey, setFocus func(p Primitive)) {
 	return c.WrapInputHandler(func(event *tcell.EventKey, setFocus func(p Primitive)) {
 		// Process key event.
 		switch key := event.Key(); key {
@@ -187,7 +200,7 @@ func (c *Checkbox) InputHandler() func(event *tcell.EventKey, setFocus func(p Pr
 			if key == tcell.KeyRune && event.Rune() != ' ' {
 				break
 			}
-			c.checked = !c.checked
+			c.checked ^= (0x1 << c.focusedbit)
 			if c.changed != nil {
 				c.changed(c.checked)
 			}
@@ -198,12 +211,22 @@ func (c *Checkbox) InputHandler() func(event *tcell.EventKey, setFocus func(p Pr
 			if c.finished != nil {
 				c.finished(key)
 			}
+		case tcell.KeyLeft:
+			c.focusedbit--
+			if c.focusedbit > c.bits {
+				c.focusedbit = c.bits - 1
+			}
+		case tcell.KeyRight:
+			c.focusedbit++
+			if c.focusedbit > c.bits {
+				c.focusedbit = 0
+			}
 		}
 	})
 }
 
 // MouseHandler returns the mouse handler for this primitive.
-func (c *Checkbox) MouseHandler() func(action MouseAction, event *tcell.EventMouse, setFocus func(p Primitive)) (consumed bool, capture Primitive) {
+func (c *MultiCheckbox) MouseHandler() func(action MouseAction, event *tcell.EventMouse, setFocus func(p Primitive)) (consumed bool, capture Primitive) {
 	return c.WrapMouseHandler(func(action MouseAction, event *tcell.EventMouse, setFocus func(p Primitive)) (consumed bool, capture Primitive) {
 		x, y := event.Position()
 		_, rectY, _, _ := c.GetInnerRect()
@@ -214,7 +237,7 @@ func (c *Checkbox) MouseHandler() func(action MouseAction, event *tcell.EventMou
 		// Process mouse event.
 		if action == MouseLeftClick && y == rectY {
 			setFocus(c)
-			c.checked = !c.checked
+			c.checked ^= (0x1 << c.focusedbit)
 			if c.changed != nil {
 				c.changed(c.checked)
 			}

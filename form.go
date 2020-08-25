@@ -58,6 +58,9 @@ type Form struct {
 	// The number of empty rows between items.
 	itemPadding int
 
+	itemcolumns int
+	itemrows    int
+
 	// The index of the item or button which has focus. (Items are counted first,
 	// buttons are counted last.) This is only used when the form itself receives
 	// focus so that the last element that had focus keeps it.
@@ -98,6 +101,9 @@ func NewForm() *Form {
 
 	f.focus = f
 
+	f.itemcolumns = 1
+	f.itemrows = 0
+
 	return f
 }
 
@@ -106,6 +112,12 @@ func NewForm() *Form {
 // layouts.
 func (f *Form) SetItemPadding(padding int) *Form {
 	f.itemPadding = padding
+	return f
+}
+
+func (f *Form) SetItemRowsColumns(rows int, columns int) *Form {
+	f.itemcolumns = columns
+	f.itemrows = rows
 	return f
 }
 
@@ -226,6 +238,18 @@ func (f *Form) AddCheckbox(label string, checked bool, changed func(checked bool
 	return f
 }
 
+// AddMultiCheckbox adds a checkbox to the form. It has a label, an initial state,
+// and an (optional) callback function which is invoked when the state of the
+// checkbox was changed by the user.
+func (f *Form) AddMultiCheckbox(label string, checked uint32, changed func(checked uint32), bits int) *Form {
+	f.items = append(f.items, NewMultiCheckbox().
+		SetLabel(label).
+		SetChecked(checked).
+		SetBits(bits).
+		SetChangedFunc(changed))
+	return f
+}
+
 // AddButton adds a new button to the form. The "selected" function is called
 // when the user selects this button. It may be nil.
 func (f *Form) AddButton(label string, selected func()) *Form {
@@ -309,6 +333,16 @@ func (f *Form) GetFormItem(index int) FormItem {
 	return f.items[index]
 }
 
+// GetFormItem returns the form items
+func (f *Form) GetFormItems() []FormItem {
+	return f.items
+}
+
+// GetFormButtons returns form buttons
+func (f *Form) GetFormButtons() []*Button {
+	return f.buttons
+}
+
 // RemoveFormItem removes the form element at the given position, starting with
 // index 0. Elements are referenced in the order they were added. Buttons are
 // not included.
@@ -363,6 +397,8 @@ func (f *Form) SetCancelFunc(callback func()) *Form {
 
 // Draw draws this primitive onto the screen.
 func (f *Form) Draw(screen tcell.Screen) {
+
+	column := 0
 	f.Box.Draw(screen)
 
 	// Determine the actual item that has focus.
@@ -390,6 +426,8 @@ func (f *Form) Draw(screen tcell.Screen) {
 	// Calculate positions of form items.
 	positions := make([]struct{ x, y, width, height int }, len(f.items)+len(f.buttons))
 	var focusedPosition struct{ x, y, width, height int }
+
+	columnWidth := 0
 	for index, item := range f.items {
 		// Calculate the space needed.
 		labelWidth := TaggedStringWidth(item.GetLabel())
@@ -428,10 +466,13 @@ func (f *Form) Draw(screen tcell.Screen) {
 		// Save position.
 		positions[index].x = x
 		positions[index].y = y
-		positions[index].width = itemWidth
+		positions[index].width = 50
 		positions[index].height = 1
 		if item.GetFocusable().HasFocus() {
 			focusedPosition = positions[index]
+		}
+		if columnWidth < positions[index].width {
+			columnWidth = positions[index].width
 		}
 
 		// Advance to next item.
@@ -439,6 +480,12 @@ func (f *Form) Draw(screen tcell.Screen) {
 			x += itemWidth + f.itemPadding
 		} else {
 			y += 1 + f.itemPadding
+			if y-topLimit > f.itemrows {
+				column++
+				y = topLimit
+				x += 50
+				columnWidth = 0
+			}
 		}
 	}
 
@@ -563,10 +610,10 @@ func (f *Form) Focus(delegate func(p Primitive)) {
 	}
 	handler := func(key tcell.Key) {
 		switch key {
-		case tcell.KeyTab, tcell.KeyEnter:
+		case tcell.KeyTab, tcell.KeyEnter, tcell.KeyDown:
 			f.focusedElement++
 			f.Focus(delegate)
-		case tcell.KeyBacktab:
+		case tcell.KeyBacktab, tcell.KeyUp:
 			f.focusedElement--
 			if f.focusedElement < 0 {
 				f.focusedElement = len(f.items) + len(f.buttons) - 1
@@ -579,6 +626,7 @@ func (f *Form) Focus(delegate func(p Primitive)) {
 				f.focusedElement = 0
 				f.Focus(delegate)
 			}
+
 		}
 	}
 
